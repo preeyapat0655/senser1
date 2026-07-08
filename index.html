@@ -361,6 +361,8 @@
 
       loadRealtimeSensor();
       await loadHistory();
+       
+              setInterval(loadHistory, 60000);
     });
   </script>
 
