@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Senser Smart</title>
+  <title>DHT11 Smart Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
@@ -21,12 +22,12 @@
     // =========================
     const firebaseConfig = {
       apiKey: "AIzaSyDhC4l21ocHOOxDMOnS8xaiia_z5Uf3JDA",
-  authDomain: "dht11-dashboard-e92d3.firebaseapp.com",
-  databaseURL: "https://dht11-dashboard-e92d3-default-rtdb.firebaseio.com",
-  projectId: "dht11-dashboard-e92d3",
-  storageBucket: "dht11-dashboard-e92d3.firebasestorage.app",
-  messagingSenderId: "470269364821",
-  appId: "1:470269364821:web:90e799523bcab0265ce2dc",
+      authDomain: "dht11-dashboard-e92d3.firebaseapp.com",
+      databaseURL: "https://dht11-dashboard-e92d3-default-rtdb.firebaseio.com",
+      projectId: "dht11-dashboard-e92d3",
+      storageBucket: "dht11-dashboard-e92d3.firebasestorage.app",
+      messagingSenderId: "470269364821",
+      appId: "1:470269364821:web:90e799523bcab0265ce2dc",
     };
 
     const app = initializeApp(firebaseConfig);
@@ -36,8 +37,8 @@
     // ตัวแปรหลัก
     // =========================
     let chart;
-    let allHistory = [];
     let realtimeEnabled = true;
+    let currentDayHistory = []; // เก็บข้อมูลของ "วันที่เลือก" เท่านั้น
 
     const tempEl = () => document.getElementById("temp");
     const humEl = () => document.getElementById("hum");
@@ -48,29 +49,20 @@
     const selectedDateEl = () => document.getElementById("selectedDate");
 
     // =========================
-    // ฟังก์ชันเวลาไทย
+    // เวลาไทย
     // =========================
     function formatThaiDateTime(ts) {
-  if (!ts) return "-";
-  const d = new Date(ts * 1000);
-
-  return d.toLocaleString("th-TH", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
-}
-
-    function formatThaiDate(ts) {
+      if (!ts) return "-";
       const d = new Date(ts * 1000);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
+      return d.toLocaleString("th-TH", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
     }
 
     function getTodayStr() {
@@ -83,7 +75,7 @@
     }
 
     // =========================
-    // แปลงสถานะ
+    // สถานะ
     // =========================
     function getStatusInfo(temp) {
       if (temp >= 28) {
@@ -102,6 +94,7 @@
 
     // =========================
     // โหลดค่าปัจจุบันแบบ realtime
+    // ใช้เฉพาะเมื่อเลือก "วันนี้"
     // =========================
     function loadRealtimeSensor() {
       const sensorRef = ref(db, "sensor");
@@ -127,54 +120,46 @@
     }
 
     // =========================
-    // โหลด history ทั้งหมด
+    // โหลด history ของ "วันที่เลือก" จากโครงสร้างใหม่
+    // path: history/YYYY-MM-DD
     // =========================
-    async function loadHistory() {
-      const historyRef = ref(db, "history");
-      const snapshot = await get(historyRef);
+    async function loadHistoryByDate(dateStr) {
+      const dayRef = ref(db, `history/${dateStr}`);
+      const snapshot = await get(dayRef);
 
       if (!snapshot.exists()) {
-        allHistory = [];
-        renderBySelectedDate();
+        currentDayHistory = [];
+        renderCurrentDate();
         return;
       }
 
       const raw = snapshot.val();
-      const arr = Object.keys(raw).map(key => ({
-        key,
-        ...raw[key]
+      // raw = { "08:00:00": {...}, "08:01:00": {...}, ... }
+      const arr = Object.keys(raw).map(timeKey => ({
+        timeKey,
+        ...raw[timeKey]
       }));
 
-      // เรียงตามเวลาเก่า -> ใหม่
+      // เรียงตาม timestamp เก่า -> ใหม่
       arr.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      allHistory = arr;
+      currentDayHistory = arr;
 
-      renderBySelectedDate();
+      renderCurrentDate();
     }
 
     // =========================
-    // กรองตามวันที่เลือก
+    // วาดข้อมูลของ "วันที่เลือก"
     // =========================
-    function getFilteredDataByDate(dateStr) {
-      return allHistory.filter(item => {
-        if (!item.timestamp) return false;
-        return formatThaiDate(item.timestamp) === dateStr;
-      });
-    }
-
-    // =========================
-    // render ข้อมูลตามวันที่เลือก
-    // =========================
-    function renderBySelectedDate() {
+    function renderCurrentDate() {
       const selectedDate = selectedDateEl().value;
       const today = getTodayStr();
-
-      const filtered = getFilteredDataByDate(selectedDate);
 
       // ถ้าเลือก "วันนี้" ให้ realtime ทำงาน
       realtimeEnabled = (selectedDate === today);
 
-      if (filtered.length === 0) {
+      const data = currentDayHistory;
+
+      if (!data.length) {
         tempEl().textContent = "-- °C";
         humEl().textContent = "-- %";
         statusEl().textContent = "ไม่มีข้อมูล";
@@ -187,12 +172,13 @@
         return;
       }
 
-      const latest = filtered[filtered.length - 1];
+      const latest = data[data.length - 1];
       const latestTemp = Number(latest.temperature ?? 0);
       const latestHum = Number(latest.humidity ?? 0);
       const latestStatus = getStatusInfo(latestTemp);
 
       // ถ้าไม่ใช่วันนี้ ให้ใช้ค่าจากข้อมูลย้อนหลังล่าสุดของวันนั้น
+      // ถ้าเป็นวันนี้ ค่า card จะอัปเดตจาก realtime /sensor
       if (selectedDate !== today) {
         tempEl().textContent = `${latestTemp.toFixed(1)} °C`;
         humEl().textContent = `${latestHum.toFixed(0)} %`;
@@ -202,8 +188,16 @@
         updatedEl().textContent = formatThaiDateTime(latest.timestamp);
       }
 
-      renderChart(filtered);
-      renderTable(filtered);
+      // กราฟ: แสดงเฉพาะทุก 5 นาที เพื่อลดความรก
+      const chartData = data.filter(item => {
+        if (!item.timestamp) return false;
+        const d = new Date(item.timestamp * 1000);
+        const minute = d.getMinutes();
+        return minute % 5 === 0;
+      });
+
+      renderChart(chartData);
+      renderTable(data); // ตารางยังคงทุกนาทีครบ
     }
 
     // =========================
@@ -212,15 +206,15 @@
     function renderChart(data) {
       const ctx = document.getElementById("historyChart").getContext("2d");
 
-     const labels = data.map(item => {
-  const d = new Date(item.timestamp * 1000);
-
-  return d.toLocaleTimeString("th-TH", {
-    timeZone: "Asia/Bangkok",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-});
+      const labels = data.map(item => {
+        const d = new Date(item.timestamp * 1000);
+        return d.toLocaleTimeString("th-TH", {
+          timeZone: "Asia/Bangkok",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        });
+      });
 
       const temps = data.map(item => item.temperature ?? null);
       const hums = data.map(item => item.humidity ?? null);
@@ -236,7 +230,7 @@
               label: "อุณหภูมิ (°C)",
               data: temps,
               borderColor: "#ef4444",
-              backgroundColor: "rgba(239,68,68,0.15)",
+              backgroundColor: "rgba(239,68,68,0.12)",
               tension: 0.3,
               fill: false,
               yAxisID: "y"
@@ -245,7 +239,7 @@
               label: "ความชื้น (%)",
               data: hums,
               borderColor: "#2563eb",
-              backgroundColor: "rgba(37,99,235,0.15)",
+              backgroundColor: "rgba(37,99,235,0.12)",
               tension: 0.3,
               fill: false,
               yAxisID: "y1"
@@ -324,7 +318,7 @@
     }
 
     // =========================
-    // ล้างประวัติย้อนหลัง
+    // ล้างประวัติย้อนหลังทั้งหมด
     // =========================
     async function clearHistory() {
       const ok = confirm("ต้องการล้างข้อมูลย้อนหลังทั้งหมดใช่ไหม?");
@@ -333,8 +327,8 @@
       try {
         await remove(ref(db, "history"));
         alert("ล้างประวัติเรียบร้อย");
-        allHistory = [];
-        renderBySelectedDate();
+        currentDayHistory = [];
+        renderCurrentDate();
       } catch (err) {
         console.error(err);
         alert("ล้างข้อมูลไม่สำเร็จ");
@@ -342,15 +336,24 @@
     }
 
     // =========================
-    // refresh
+    // รีเฟรชข้อมูลของวันที่ที่เลือก
     // =========================
     async function refreshAll() {
-      await loadHistory();
+      const dateStr = selectedDateEl().value;
+      await loadHistoryByDate(dateStr);
       alert("รีเฟรชข้อมูลแล้ว");
     }
 
     // =========================
-    // start
+    // เปลี่ยนวันย้อนหลัง
+    // =========================
+    async function handleDateChange() {
+      const dateStr = selectedDateEl().value;
+      await loadHistoryByDate(dateStr);
+    }
+
+    // =========================
+    // Start
     // =========================
     window.addEventListener("DOMContentLoaded", async () => {
       // ตั้งค่าวันเริ่มต้นเป็นวันนี้
@@ -358,12 +361,16 @@
 
       document.getElementById("btnRefresh").addEventListener("click", refreshAll);
       document.getElementById("btnClear").addEventListener("click", clearHistory);
-      document.getElementById("selectedDate").addEventListener("change", renderBySelectedDate);
+      document.getElementById("selectedDate").addEventListener("change", handleDateChange);
 
       loadRealtimeSensor();
-      await loadHistory();
-       
-              setInterval(loadHistory, 60000);
+      await loadHistoryByDate(getTodayStr());
+
+      // โหลดข้อมูลของวันที่เลือกใหม่ทุก 1 นาที
+      setInterval(async () => {
+        const dateStr = selectedDateEl().value;
+        await loadHistoryByDate(dateStr);
+      }, 60000);
     });
   </script>
 
