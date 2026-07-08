@@ -51,18 +51,17 @@
     // ฟังก์ชันเวลาไทย
     // =========================
     function formatThaiDateTime(ts) {
-      if (!ts) return "-";
-      const d = new Date(ts * 1000);
-      return d.toLocaleString("th-TH", {
-        timeZone: "Asia/Bangkok",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      });
-    }
+  if (!ts) return "-";
+  const d = new Date(ts * 1000);
+  return d.toLocaleString("th-TH", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
 
     function formatThaiDate(ts) {
       const d = new Date(ts * 1000);
