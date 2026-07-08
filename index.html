@@ -53,6 +53,7 @@
     function formatThaiDateTime(ts) {
   if (!ts) return "-";
   const d = new Date(ts * 1000);
+
   return d.toLocaleString("th-TH", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
@@ -210,15 +211,15 @@
     function renderChart(data) {
       const ctx = document.getElementById("historyChart").getContext("2d");
 
-      const labels = data.map(item => {
-        const d = new Date(item.timestamp * 1000);
-        return d.toLocaleTimeString("th-TH", {
-          timeZone: "Asia/Bangkok",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit"
-        });
-      });
+     const labels = data.map(item => {
+  const d = new Date(item.timestamp * 1000);
+
+  return d.toLocaleTimeString("th-TH", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+});
 
       const temps = data.map(item => item.temperature ?? null);
       const hums = data.map(item => item.humidity ?? null);
