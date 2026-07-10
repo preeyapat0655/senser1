@@ -38,7 +38,10 @@
     // =========================
     let chart;
     let realtimeEnabled = true;
-    let currentDayHistory = []; // เก็บข้อมูลของ "วันที่เลือก" เท่านั้น
+    let currentDayHistory = [];   // ข้อมูลของวันที่เลือก
+    let sevenDaySummary = [];     // สรุป 7 วันย้อนหลัง
+
+    const TEMP_LIMIT = 28;
 
     const tempEl = () => document.getElementById("temp");
     const humEl = () => document.getElementById("hum");
@@ -47,6 +50,18 @@
     const updatedEl = () => document.getElementById("updated");
     const tableBody = () => document.getElementById("historyTableBody");
     const selectedDateEl = () => document.getElementById("selectedDate");
+
+    // daily summary cells
+    const sMinTemp = () => document.getElementById("sMinTemp");
+    const sMaxTemp = () => document.getElementById("sMaxTemp");
+    const sAvgTemp = () => document.getElementById("sAvgTemp");
+    const sMinHum  = () => document.getElementById("sMinHum");
+    const sMaxHum  = () => document.getElementById("sMaxHum");
+    const sAvgHum  = () => document.getElementById("sAvgHum");
+    const sCount   = () => document.getElementById("sCount");
+    const sAlert   = () => document.getElementById("sAlert");
+
+    const weekBody = () => document.getElementById("weekSummaryBody");
 
     // =========================
     // เวลาไทย
@@ -65,20 +80,51 @@
       });
     }
 
+    function getThaiNowDate() {
+      return new Date(
+        new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" })
+      );
+    }
+
     function getTodayStr() {
-      const now = new Date();
-      const thai = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+      const thai = getThaiNowDate();
       const y = thai.getFullYear();
       const m = String(thai.getMonth() + 1).padStart(2, "0");
       const d = String(thai.getDate()).padStart(2, "0");
       return `${y}-${m}-${d}`;
     }
 
+    function dateObjToStr(dateObj) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+      const d = String(dateObj.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function getPastDateStr(daysBack) {
+      const thai = getThaiNowDate();
+      thai.setDate(thai.getDate() - daysBack);
+      return dateObjToStr(thai);
+    }
+
+    function isWithinLast7Days(dateStr) {
+      const today = getThaiNowDate();
+      const minDate = new Date(today);
+      minDate.setDate(today.getDate() - 6); // รวมวันนี้เป็น 7 วัน
+
+      const picked = new Date(dateStr + "T00:00:00");
+      const pickedOnly = new Date(picked.getFullYear(), picked.getMonth(), picked.getDate());
+      const minOnly = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+      const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+      return pickedOnly >= minOnly && pickedOnly <= todayOnly;
+    }
+
     // =========================
     // สถานะ
     // =========================
     function getStatusInfo(temp) {
-      if (temp >= 28) {
+      if (temp >= TEMP_LIMIT) {
         return {
           text: "แจ้งเตือน",
           message: "กรุณาเปิดแอร์สำรองด่วน",
@@ -120,10 +166,16 @@
     }
 
     // =========================
-    // โหลด history ของ "วันที่เลือก" จากโครงสร้างใหม่
+    // โหลด history ของ "วันที่เลือก"
     // path: history/YYYY-MM-DD
     // =========================
     async function loadHistoryByDate(dateStr) {
+      if (!isWithinLast7Days(dateStr)) {
+        currentDayHistory = [];
+        renderCurrentDate();
+        return;
+      }
+
       const dayRef = ref(db, `history/${dateStr}`);
       const snapshot = await get(dayRef);
 
@@ -134,17 +186,158 @@
       }
 
       const raw = snapshot.val();
-      // raw = { "08:00:00": {...}, "08:01:00": {...}, ... }
       const arr = Object.keys(raw).map(timeKey => ({
         timeKey,
         ...raw[timeKey]
       }));
 
-      // เรียงตาม timestamp เก่า -> ใหม่
       arr.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
       currentDayHistory = arr;
 
       renderCurrentDate();
+    }
+
+    // =========================
+    // สรุปข้อมูลของวัน
+    // =========================
+    function calcDaySummary(data) {
+      if (!data.length) {
+        return null;
+      }
+
+      const temps = data.map(x => Number(x.temperature ?? 0));
+      const hums = data.map(x => Number(x.humidity ?? 0));
+
+      const minTemp = Math.min(...temps);
+      const maxTemp = Math.max(...temps);
+      const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+
+      const minHum = Math.min(...hums);
+      const maxHum = Math.max(...hums);
+      const avgHum = hums.reduce((a, b) => a + b, 0) / hums.length;
+
+      const alertCount = temps.filter(t => t >= TEMP_LIMIT).length;
+
+      return {
+        minTemp,
+        maxTemp,
+        avgTemp,
+        minHum,
+        maxHum,
+        avgHum,
+        count: data.length,
+        alertCount
+      };
+    }
+
+    function renderDaySummary(summary) {
+      if (!summary) {
+        sMinTemp().textContent = "-";
+        sMaxTemp().textContent = "-";
+        sAvgTemp().textContent = "-";
+        sMinHum().textContent = "-";
+        sMaxHum().textContent = "-";
+        sAvgHum().textContent = "-";
+        sCount().textContent = "-";
+        sAlert().textContent = "-";
+        return;
+      }
+
+      sMinTemp().textContent = `${summary.minTemp.toFixed(1)} °C`;
+      sMaxTemp().textContent = `${summary.maxTemp.toFixed(1)} °C`;
+      sAvgTemp().textContent = `${summary.avgTemp.toFixed(1)} °C`;
+      sMinHum().textContent  = `${summary.minHum.toFixed(0)} %`;
+      sMaxHum().textContent  = `${summary.maxHum.toFixed(0)} %`;
+      sAvgHum().textContent  = `${summary.avgHum.toFixed(0)} %`;
+      sCount().textContent   = `${summary.count} ครั้ง`;
+      sAlert().textContent   = `${summary.alertCount} ครั้ง`;
+    }
+
+    // =========================
+    // โหลดสรุปย้อนหลัง 7 วัน
+    // =========================
+    async function loadSevenDaySummary() {
+      const historyRef = ref(db, "history");
+      const snapshot = await get(historyRef);
+
+      if (!snapshot.exists()) {
+        sevenDaySummary = [];
+        renderSevenDaySummary();
+        return;
+      }
+
+      const raw = snapshot.val();
+      const result = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const dateStr = getPastDateStr(i);
+        const dayData = raw[dateStr];
+
+        if (!dayData) {
+          result.push({
+            date: dateStr,
+            hasData: false
+          });
+          continue;
+        }
+
+        const arr = Object.keys(dayData).map(timeKey => ({
+          timeKey,
+          ...dayData[timeKey]
+        }));
+
+        arr.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+        const summary = calcDaySummary(arr);
+
+        result.push({
+          date: dateStr,
+          hasData: true,
+          ...summary
+        });
+      }
+
+      sevenDaySummary = result;
+      renderSevenDaySummary();
+    }
+
+    function renderSevenDaySummary() {
+      const body = weekBody();
+      body.innerHTML = "";
+
+      if (!sevenDaySummary.length) {
+        body.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align:center; color:#6b7280;">ไม่มีข้อมูลย้อนหลัง 7 วัน</td>
+          </tr>
+        `;
+        return;
+      }
+
+      sevenDaySummary.forEach(item => {
+        const tr = document.createElement("tr");
+
+        if (!item.hasData) {
+          tr.innerHTML = `
+            <td>${item.date}</td>
+            <td colspan="6" style="color:#6b7280;">ไม่มีข้อมูล</td>
+          `;
+        } else {
+          tr.innerHTML = `
+            <td>${item.date}</td>
+            <td>${item.minTemp.toFixed(1)} °C</td>
+            <td>${item.maxTemp.toFixed(1)} °C</td>
+            <td>${item.avgTemp.toFixed(1)} °C</td>
+            <td>${item.avgHum.toFixed(0)} %</td>
+            <td>${item.count}</td>
+            <td style="font-weight:700; color:${item.alertCount > 0 ? '#dc2626' : '#16a34a'};">
+              ${item.alertCount}
+            </td>
+          `;
+        }
+
+        body.appendChild(tr);
+      });
     }
 
     // =========================
@@ -154,9 +347,7 @@
       const selectedDate = selectedDateEl().value;
       const today = getTodayStr();
 
-      // ถ้าเลือก "วันนี้" ให้ realtime ทำงาน
       realtimeEnabled = (selectedDate === today);
-
       const data = currentDayHistory;
 
       if (!data.length) {
@@ -169,6 +360,7 @@
 
         renderChart([]);
         renderTable([]);
+        renderDaySummary(null);
         return;
       }
 
@@ -177,8 +369,6 @@
       const latestHum = Number(latest.humidity ?? 0);
       const latestStatus = getStatusInfo(latestTemp);
 
-      // ถ้าไม่ใช่วันนี้ ให้ใช้ค่าจากข้อมูลย้อนหลังล่าสุดของวันนั้น
-      // ถ้าเป็นวันนี้ ค่า card จะอัปเดตจาก realtime /sensor
       if (selectedDate !== today) {
         tempEl().textContent = `${latestTemp.toFixed(1)} °C`;
         humEl().textContent = `${latestHum.toFixed(0)} %`;
@@ -188,7 +378,7 @@
         updatedEl().textContent = formatThaiDateTime(latest.timestamp);
       }
 
-      // กราฟ: แสดงเฉพาะทุก 5 นาที เพื่อลดความรก
+      // กราฟแสดงทุก 5 นาที เพื่อลดความรก
       const chartData = data.filter(item => {
         if (!item.timestamp) return false;
         const d = new Date(item.timestamp * 1000);
@@ -197,11 +387,12 @@
       });
 
       renderChart(chartData);
-      renderTable(data); // ตารางยังคงทุกนาทีครบ
+      renderTable(data);
+      renderDaySummary(calcDaySummary(data));
     }
 
     // =========================
-    // วาดกราฟ
+    // กราฟ
     // =========================
     function renderChart(data) {
       const ctx = document.getElementById("historyChart").getContext("2d");
@@ -284,7 +475,7 @@
     }
 
     // =========================
-    // ตารางย้อนหลัง
+    // ตารางย้อนหลังของวันที่เลือก
     // =========================
     function renderTable(data) {
       const body = tableBody();
@@ -299,7 +490,6 @@
         return;
       }
 
-      // ให้แสดงล่าสุดอยู่บนสุด
       const reversed = [...data].reverse();
 
       reversed.forEach(item => {
@@ -318,7 +508,7 @@
     }
 
     // =========================
-    // ล้างประวัติย้อนหลังทั้งหมด
+    // ล้าง history ทั้งหมด
     // =========================
     async function clearHistory() {
       const ok = confirm("ต้องการล้างข้อมูลย้อนหลังทั้งหมดใช่ไหม?");
@@ -328,7 +518,9 @@
         await remove(ref(db, "history"));
         alert("ล้างประวัติเรียบร้อย");
         currentDayHistory = [];
+        sevenDaySummary = [];
         renderCurrentDate();
+        renderSevenDaySummary();
       } catch (err) {
         console.error(err);
         alert("ล้างข้อมูลไม่สำเร็จ");
@@ -336,11 +528,12 @@
     }
 
     // =========================
-    // รีเฟรชข้อมูลของวันที่ที่เลือก
+    // รีเฟรช
     // =========================
     async function refreshAll() {
       const dateStr = selectedDateEl().value;
       await loadHistoryByDate(dateStr);
+      await loadSevenDaySummary();
       alert("รีเฟรชข้อมูลแล้ว");
     }
 
@@ -349,6 +542,14 @@
     // =========================
     async function handleDateChange() {
       const dateStr = selectedDateEl().value;
+
+      if (!isWithinLast7Days(dateStr)) {
+        alert("เลือกดูย้อนหลังได้ไม่เกิน 7 วันล่าสุด");
+        selectedDateEl().value = getTodayStr();
+        await loadHistoryByDate(getTodayStr());
+        return;
+      }
+
       await loadHistoryByDate(dateStr);
     }
 
@@ -356,20 +557,26 @@
     // Start
     // =========================
     window.addEventListener("DOMContentLoaded", async () => {
-      // ตั้งค่าวันเริ่มต้นเป็นวันนี้
-      selectedDateEl().value = getTodayStr();
+      const today = getTodayStr();
+      const minDate = getPastDateStr(6);
+
+      selectedDateEl().value = today;
+      selectedDateEl().min = minDate;
+      selectedDateEl().max = today;
 
       document.getElementById("btnRefresh").addEventListener("click", refreshAll);
       document.getElementById("btnClear").addEventListener("click", clearHistory);
       document.getElementById("selectedDate").addEventListener("change", handleDateChange);
 
       loadRealtimeSensor();
-      await loadHistoryByDate(getTodayStr());
+      await loadHistoryByDate(today);
+      await loadSevenDaySummary();
 
-      // โหลดข้อมูลของวันที่เลือกใหม่ทุก 1 นาที
+      // รีโหลดทุก 1 นาที
       setInterval(async () => {
         const dateStr = selectedDateEl().value;
         await loadHistoryByDate(dateStr);
+        await loadSevenDaySummary();
       }, 60000);
     });
   </script>
@@ -384,14 +591,14 @@
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1250px;
       margin: 0 auto;
       padding: 28px 16px 40px;
     }
 
     .title {
       text-align: center;
-      font-size: 44px;
+      font-size: 42px;
       font-weight: 800;
       color: #1d4ed8;
       margin: 10px 0 24px;
@@ -523,8 +730,38 @@
       background: #fafcff;
     }
 
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    .summary-item {
+      background: #f8fbff;
+      border: 1px solid #e3ecff;
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .summary-label {
+      font-size: 14px;
+      color: #4b5563;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .summary-value {
+      font-size: 24px;
+      font-weight: 800;
+      color: #1f2937;
+    }
+
     @media (max-width: 1000px) {
       .cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .summary-grid {
         grid-template-columns: repeat(2, 1fr);
       }
       .title {
@@ -533,7 +770,8 @@
     }
 
     @media (max-width: 640px) {
-      .cards {
+      .cards,
+      .summary-grid {
         grid-template-columns: 1fr;
       }
       .title {
@@ -550,7 +788,7 @@
 </head>
 <body>
   <div class="container">
-    <div class="title">Senser Smart</div>
+    <div class="title">DHT11 Smart Dashboard</div>
 
     <div class="top-actions">
       <button id="btnRefresh" class="btn btn-blue">รีเฟรชหน้า</button>
@@ -558,7 +796,7 @@
     </div>
 
     <div class="date-box">
-      <label for="selectedDate">เลือกวันที่ย้อนหลัง:</label>
+      <label for="selectedDate">เลือกวันที่ย้อนหลัง (7 วันล่าสุด):</label>
       <input type="date" id="selectedDate" />
     </div>
 
@@ -593,6 +831,44 @@
     </div>
 
     <div class="panel">
+      <div class="panel-title">สรุปของวันที่เลือก</div>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">อุณหภูมิต่ำสุด</div>
+          <div id="sMinTemp" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">อุณหภูมิสูงสุด</div>
+          <div id="sMaxTemp" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">อุณหภูมิเฉลี่ย</div>
+          <div id="sAvgTemp" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">ความชื้นต่ำสุด</div>
+          <div id="sMinHum" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">ความชื้นสูงสุด</div>
+          <div id="sMaxHum" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">ความชื้นเฉลี่ย</div>
+          <div id="sAvgHum" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">จำนวนครั้งที่วัด</div>
+          <div id="sCount" class="summary-value">-</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">จำนวนครั้งที่แจ้งเตือน ≥ 28°C</div>
+          <div id="sAlert" class="summary-value">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
       <div class="panel-title">ตารางย้อนหลังของวันที่เลือก</div>
       <div class="table-wrap">
         <table>
@@ -607,6 +883,30 @@
           <tbody id="historyTableBody">
             <tr>
               <td colspan="4">กำลังโหลด...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">ตารางสรุปย้อนหลัง 7 วัน</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>วันที่</th>
+              <th>อุณหภูมิต่ำสุด</th>
+              <th>อุณหภูมิสูงสุด</th>
+              <th>อุณหภูมิเฉลี่ย</th>
+              <th>ความชื้นเฉลี่ย</th>
+              <th>จำนวนครั้งที่วัด</th>
+              <th>จำนวนครั้งแจ้งเตือน</th>
+            </tr>
+          </thead>
+          <tbody id="weekSummaryBody">
+            <tr>
+              <td colspan="7">กำลังโหลด...</td>
             </tr>
           </tbody>
         </table>
