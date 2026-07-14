@@ -561,88 +561,88 @@
     // =========================
      async function exportExcel() {
 
-    alert("Export ทำงานแล้ว");
-
     const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Report");
+        sheet.columns = [
+        { width: 28 },
+        { width: 18 },
+        { width: 18 }
+    ];
+    const selectedDate = selectedDateEl().value;
 
-    const selectedDate = document.getElementById("selectedDate").value;
+    sheet.getCell("A1").value = "รายงานอุณหภูมิและความชื้น";
+    sheet.getCell("A1").font = {
+        bold: true,
+        size: 18
+    };
 
     sheet.getCell("A3").value = "วันที่";
     sheet.getCell("B3").value = selectedDate;
 
-    const data = getFilteredDataByDate(selectedDate);
+    // ใช้ข้อมูลของวันที่เลือก
+    const data = currentDayHistory;
 
-    if(data.length==0){
+    if (!data.length) {
         alert("ไม่มีข้อมูล");
         return;
     }
 
-    const temps=data.map(i=>Number(i.temperature));
-    const hums=data.map(i=>Number(i.humidity));
-
-    const maxTemp=Math.max(...temps);
-    const minTemp=Math.min(...temps);
-    const avgTemp=(temps.reduce((a,b)=>a+b,0)/temps.length).toFixed(1);
-
-    const maxHum=Math.max(...hums);
-    const minHum=Math.min(...hums);
-    const avgHum=(hums.reduce((a,b)=>a+b,0)/hums.length).toFixed(1);
-
+    const temps = data.map(x => Number(x.temperature));
+    const hums = data.map(x => Number(x.humidity));
 
     sheet.addRow([]);
-    sheet.addRow(["อุณหภูมิสูงสุด",maxTemp+" °C"]);
-    sheet.addRow(["อุณหภูมิต่ำสุด",minTemp+" °C"]);
-    sheet.addRow(["อุณหภูมิเฉลี่ย",avgTemp+" °C"]);
-    sheet.addRow(["ความชื้นสูงสุด",maxHum+" %"]);
-    sheet.addRow(["ความชื้นต่ำสุด",minHum+" %"]);
-    sheet.addRow(["ความชื้นเฉลี่ย",avgHum+" %"]);
-    sheet.addRow(["จำนวนครั้งที่วัด",temps.length]);
+    sheet.addRow(["อุณหภูมิสูงสุด", Math.max(...temps) + " °C"]);
+    sheet.addRow(["อุณหภูมิต่ำสุด", Math.min(...temps) + " °C"]);
+    sheet.addRow(["อุณหภูมิเฉลี่ย", (temps.reduce((a,b)=>a+b,0)/temps.length).toFixed(1) + " °C"]);
+    sheet.addRow(["ความชื้นสูงสุด", Math.max(...hums) + " %"]);
+    sheet.addRow(["ความชื้นต่ำสุด", Math.min(...hums) + " %"]);
+    sheet.addRow(["ความชื้นเฉลี่ย", (hums.reduce((a,b)=>a+b,0)/hums.length).toFixed(1) + " %"]);
 
-    // รูปกราฟ
-    const canvas=document.getElementById("historyChart");
-    const img=canvas.toDataURL("image/png");
+    const canvas = document.getElementById("historyChart");
 
-    const imageId=workbook.addImage({
-        base64:img,
-        extension:"png"
+    const imageId = workbook.addImage({
+        base64: canvas.toDataURL("image/png"),
+        extension: "png"
     });
 
-    sheet.addImage(imageId,{
-        tl:{col:0,row:12},
-        ext:{width:700,height:350}
+    sheet.addImage(imageId, {
+        tl: { col: 0, row: 12 },
+        ext: { width: 700, height: 350 }
     });
 
-    const buffer=await workbook.xlsx.writeBuffer();
+    const buffer = await workbook.xlsx.writeBuffer();
 
     saveAs(
-        new Blob([buffer]),
-        "Report_"+selectedDate+".xlsx"
+        new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }),
+        `Report_${selectedDate}.xlsx`
     );
-
 }
-     window.addEventListener("DOMContentLoaded", async () => {
-      const today = getTodayStr();
-      const minDate = getPastDateStr(6);
+window.addEventListener("DOMContentLoaded", async () => {
+    const today = getTodayStr();
+    const minDate = getPastDateStr(6);
 
-      selectedDateEl().value = today;
-      selectedDateEl().min = minDate;
-      selectedDateEl().max = today;
+    selectedDateEl().value = today;
+    selectedDateEl().min = minDate;
+    selectedDateEl().max = today;
 
-      document.getElementById("btnRefresh").addEventListener("click", refreshAll);
-      document.getElementById("btnClear").addEventListener("click", clearHistory);
-      document.getElementById("selectedDate").addEventListener("change", handleDateChange);
-      document.getElementById("btnExportExcel").addEventListener("click", exportExcel);
-      loadRealtimeSensor();
-      await loadHistoryByDate(today);
-      await loadSevenDaySummary();
+    document.getElementById("btnRefresh").addEventListener("click", refreshAll);
+    document.getElementById("btnClear").addEventListener("click", clearHistory);
+    document.getElementById("btnExportExcel").addEventListener("click", exportExcel);
+    document.getElementById("selectedDate").addEventListener("change", handleDateChange);
 
-      // รีโหลดทุก 1 นาที
-      setInterval(async () => {
+    loadRealtimeSensor();
+
+    await loadHistoryByDate(today);
+    await loadSevenDaySummary();
+
+    setInterval(async () => {
         const dateStr = selectedDateEl().value;
         await loadHistoryByDate(dateStr);
         await loadSevenDaySummary();
-      }, 60000);
-    });
+    }, 60000);
+});
   </script>
 
   <style>
@@ -849,11 +849,8 @@
         height: 320px;
       }
 
-}
     }
   </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
   <div class="container">
