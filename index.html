@@ -7,6 +7,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
@@ -556,7 +559,68 @@
     // =========================
     // Start
     // =========================
-    window.addEventListener("DOMContentLoaded", async () => {
+     async function exportExcel() {
+
+    alert("Export ทำงานแล้ว");
+
+    const workbook = new ExcelJS.Workbook();
+
+    const selectedDate = document.getElementById("selectedDate").value;
+
+    sheet.getCell("A3").value = "วันที่";
+    sheet.getCell("B3").value = selectedDate;
+
+    const data = getFilteredDataByDate(selectedDate);
+
+    if(data.length==0){
+        alert("ไม่มีข้อมูล");
+        return;
+    }
+
+    const temps=data.map(i=>Number(i.temperature));
+    const hums=data.map(i=>Number(i.humidity));
+
+    const maxTemp=Math.max(...temps);
+    const minTemp=Math.min(...temps);
+    const avgTemp=(temps.reduce((a,b)=>a+b,0)/temps.length).toFixed(1);
+
+    const maxHum=Math.max(...hums);
+    const minHum=Math.min(...hums);
+    const avgHum=(hums.reduce((a,b)=>a+b,0)/hums.length).toFixed(1);
+
+
+    sheet.addRow([]);
+    sheet.addRow(["อุณหภูมิสูงสุด",maxTemp+" °C"]);
+    sheet.addRow(["อุณหภูมิต่ำสุด",minTemp+" °C"]);
+    sheet.addRow(["อุณหภูมิเฉลี่ย",avgTemp+" °C"]);
+    sheet.addRow(["ความชื้นสูงสุด",maxHum+" %"]);
+    sheet.addRow(["ความชื้นต่ำสุด",minHum+" %"]);
+    sheet.addRow(["ความชื้นเฉลี่ย",avgHum+" %"]);
+    sheet.addRow(["จำนวนครั้งที่วัด",temps.length]);
+
+    // รูปกราฟ
+    const canvas=document.getElementById("historyChart");
+    const img=canvas.toDataURL("image/png");
+
+    const imageId=workbook.addImage({
+        base64:img,
+        extension:"png"
+    });
+
+    sheet.addImage(imageId,{
+        tl:{col:0,row:12},
+        ext:{width:700,height:350}
+    });
+
+    const buffer=await workbook.xlsx.writeBuffer();
+
+    saveAs(
+        new Blob([buffer]),
+        "Report_"+selectedDate+".xlsx"
+    );
+
+}
+     window.addEventListener("DOMContentLoaded", async () => {
       const today = getTodayStr();
       const minDate = getPastDateStr(6);
 
@@ -567,7 +631,7 @@
       document.getElementById("btnRefresh").addEventListener("click", refreshAll);
       document.getElementById("btnClear").addEventListener("click", clearHistory);
       document.getElementById("selectedDate").addEventListener("change", handleDateChange);
-
+      document.getElementById("btnExportExcel").addEventListener("click", exportExcel);
       loadRealtimeSensor();
       await loadHistoryByDate(today);
       await loadSevenDaySummary();
@@ -624,6 +688,7 @@
     }
 
     .btn-blue { background: #2563eb; }
+        .btn-green { background: #16a34a;}
     .btn-red { background: #ef4444; }
 
     .date-box {
@@ -783,17 +848,26 @@
       .chart-wrap {
         height: 320px;
       }
+
+}
     }
   </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
   <div class="container">
     <div class="title">Senser Smart</div>
 
     <div class="top-actions">
-      <button id="btnRefresh" class="btn btn-blue">รีเฟรชหน้า</button>
-      <button id="btnClear" class="btn btn-red">ล้างประวัติย้อนหลัง</button>
-    </div>
+  <button id="btnRefresh" class="btn btn-blue">รีเฟรชหน้า</button>
+
+  <button id="btnExportExcel" class="btn btn-green">
+    📥 Export Excel
+  </button>
+
+  <button id="btnClear" class="btn btn-red">ล้างประวัติย้อนหลัง</button>
+</div>
 
     <div class="date-box">
       <label for="selectedDate">เลือกวันที่ย้อนหลัง (7 วันล่าสุด):</label>
