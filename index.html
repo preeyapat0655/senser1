@@ -389,7 +389,7 @@
         return minute % 5 === 0;
       });
 
-      renderChart(chartData);
+      renderChart(data);
       renderTable(data);
       renderDaySummary(calcDaySummary(data));
     }
@@ -405,7 +405,7 @@
         return d.toLocaleTimeString("th-TH", {
           timeZone: "Asia/Bangkok",
           hour: "2-digit",
-          minute: "2-digit",
+          minute: "2-digit", 
           hour12: false
         });
       });
@@ -568,6 +568,8 @@
         { width: 18 },
         { width: 18 }
     ];
+    sheet.mergeCells("A1:B1");
+
     const selectedDate = selectedDateEl().value;
 
     sheet.getCell("A1").value = "รายงานอุณหภูมิและความชื้น";
@@ -575,7 +577,10 @@
         bold: true,
         size: 18
     };
-
+      sheet.getCell("A1").alignment = {
+        horizontal: "center",
+        vertical: "middle"
+        };
     sheet.getCell("A3").value = "วันที่";
     sheet.getCell("B3").value = selectedDate;
 
